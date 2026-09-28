@@ -1,0 +1,43 @@
+# Maven
+target/
+.mvn/apache-maven-*/
+.mvn/apache-maven-*-bin.zip
+*.class
+
+# 测试源码与测试产物
+src/test/
+test-results/
+surefire-reports/
+failsafe-reports/
+coverage/
+jacoco.exec
+jacoco-report/
+*.hprof
+
+# Runtime output
+runtime/
+logs/
+*.log
+*.pid
+*.out
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Local environment
+.env
+.env.*
+!.env.example
+
+# PowerShell and OS files
+*.tmp
+*.temp
+/AGENTS.md
+Thumbs.db
+.DS_Store
+
+# Superpowers planning workspace
+.superpowers/
+docs/superpowers/

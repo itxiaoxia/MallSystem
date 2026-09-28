@@ -1,0 +1,54 @@
+server:
+  address: 127.0.0.1
+  port: 8080
+  shutdown: graceful
+
+spring:
+  application:
+    name: mall-system
+  datasource:
+    url: jdbc:mysql://127.0.0.1:3306/mall_system?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=UTF-8&allowPublicKeyRetrieval=true
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:root}
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 3000
+      pool-name: MallHikariPool
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        jdbc:
+          batch_size: 50
+        order_inserts: true
+        order_updates: true
+  jackson:
+    default-property-inclusion: non_null
+    time-zone: Asia/Shanghai
+  ai:
+    mcp:
+      server:
+        protocol: STREAMABLE
+        type: SYNC
+        name: mall-system
+        version: 0.0.1
+        capabilities:
+          tool: true
+          resource: false
+          prompt: false
+          completion: false
+        streamable-http:
+          mcp-endpoint: /mcp
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
