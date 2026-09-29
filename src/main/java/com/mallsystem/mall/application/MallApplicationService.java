@@ -31,6 +31,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.UUID;
+import java.util.concurrent.locks.ReentrantLock;
 
 @Service
 public class MallApplicationService {
@@ -39,6 +40,7 @@ public class MallApplicationService {
 
     private final ProductRepository productRepository;
     private final MallOrderRepository mallOrderRepository;
+    private final ReentrantLock orderMutationLock = new ReentrantLock();
 
     public MallApplicationService(ProductRepository productRepository, MallOrderRepository mallOrderRepository) {
         this.productRepository = productRepository;
@@ -105,59 +107,74 @@ public class MallApplicationService {
 
     @Transactional
     public OrderStatusResponse refundOrder(String orderNo) {
-        String normalizedOrderNo = normalizeRequired(orderNo);
-        MallOrder order = mallOrderRepository.findByOrderNoForUpdate(normalizedOrderNo)
-                .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));
-        if (order.getStatus() == OrderStatus.CANCELLED) {
-            return new OrderStatusResponse(order.getOrderNo(), order.getStatus());
-        }
-        if (order.getStatus() != OrderStatus.CREATED && order.getStatus() != OrderStatus.PAID) {
-            throw new BusinessException(ErrorCode.REFUND_NOT_ALLOWED);
-        }
+        orderMutationLock.lock();
+        try {
+            String normalizedOrderNo = normalizeRequired(orderNo);
+            MallOrder order = mallOrderRepository.findByOrderNoForUpdate(normalizedOrderNo)
+                    .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));
+            if (order.getStatus() == OrderStatus.CANCELLED) {
+                return new OrderStatusResponse(order.getOrderNo(), order.getStatus());
+            }
+            if (order.getStatus() != OrderStatus.CREATED && order.getStatus() != OrderStatus.PAID) {
+                throw new BusinessException(ErrorCode.REFUND_NOT_ALLOWED);
+            }
 
-        restoreOrderStock(order);
-        order.changeStatus(OrderStatus.CANCELLED);
-        mallOrderRepository.saveAndFlush(order);
-        return new OrderStatusResponse(order.getOrderNo(), order.getStatus());
+            restoreOrderStock(order);
+            order.changeStatus(OrderStatus.CANCELLED);
+            mallOrderRepository.saveAndFlush(order);
+            return new OrderStatusResponse(order.getOrderNo(), order.getStatus());
+        } finally {
+            orderMutationLock.unlock();
+        }
     }
 
     @Transactional
     public OrderStatusResponse deleteOrder(String orderNo) {
-        String normalizedOrderNo = normalizeRequired(orderNo);
-        MallOrder order = mallOrderRepository.findByOrderNoForUpdate(normalizedOrderNo)
-                .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));
-        if (order.getStatus() == OrderStatus.SHIPPED || order.getStatus() == OrderStatus.CLOSED) {
-            throw new BusinessException(ErrorCode.ORDER_DELETE_NOT_ALLOWED);
-        }
-        if (order.getStatus() == OrderStatus.CREATED || order.getStatus() == OrderStatus.PAID) {
-            restoreOrderStock(order);
-            order.changeStatus(OrderStatus.CANCELLED);
-        }
+        orderMutationLock.lock();
+        try {
+            String normalizedOrderNo = normalizeRequired(orderNo);
+            MallOrder order = mallOrderRepository.findByOrderNoForUpdate(normalizedOrderNo)
+                    .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));
+            if (order.getStatus() == OrderStatus.SHIPPED || order.getStatus() == OrderStatus.CLOSED) {
+                throw new BusinessException(ErrorCode.ORDER_DELETE_NOT_ALLOWED);
+            }
+            if (order.getStatus() == OrderStatus.CREATED || order.getStatus() == OrderStatus.PAID) {
+                restoreOrderStock(order);
+                order.changeStatus(OrderStatus.CANCELLED);
+            }
 
-        OrderStatusResponse response = new OrderStatusResponse(order.getOrderNo(), OrderStatus.CANCELLED);
-        mallOrderRepository.delete(order);
-        mallOrderRepository.flush();
-        return response;
+            OrderStatusResponse response = new OrderStatusResponse(order.getOrderNo(), OrderStatus.CANCELLED);
+            mallOrderRepository.delete(order);
+            mallOrderRepository.flush();
+            return response;
+        } finally {
+            orderMutationLock.unlock();
+        }
     }
 
     @Transactional
     public OrderStatusResponse updateOrderStatus(String orderNo, OrderStatus targetStatus) {
-        String normalizedOrderNo = normalizeRequired(orderNo);
-        if (targetStatus == null) {
-            throw new BusinessException(ErrorCode.INVALID_ARGUMENT);
-        }
-        if (targetStatus == OrderStatus.CANCELLED) {
-            return refundOrder(normalizedOrderNo);
-        }
-        MallOrder order = mallOrderRepository.findByOrderNo(normalizedOrderNo)
-                .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));
+        orderMutationLock.lock();
         try {
-            order.changeStatus(targetStatus);
-        } catch (IllegalStateException exception) {
-            throw new BusinessException(ErrorCode.INVALID_ORDER_STATUS, exception.getMessage());
+            String normalizedOrderNo = normalizeRequired(orderNo);
+            if (targetStatus == null) {
+                throw new BusinessException(ErrorCode.INVALID_ARGUMENT);
+            }
+            if (targetStatus == OrderStatus.CANCELLED) {
+                return refundOrder(normalizedOrderNo);
+            }
+            MallOrder order = mallOrderRepository.findByOrderNo(normalizedOrderNo)
+                    .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));
+            try {
+                order.changeStatus(targetStatus);
+            } catch (IllegalStateException exception) {
+                throw new BusinessException(ErrorCode.INVALID_ORDER_STATUS, exception.getMessage());
+            }
+            mallOrderRepository.saveAndFlush(order);
+            return new OrderStatusResponse(order.getOrderNo(), order.getStatus());
+        } finally {
+            orderMutationLock.unlock();
         }
-        mallOrderRepository.saveAndFlush(order);
-        return new OrderStatusResponse(order.getOrderNo(), order.getStatus());
     }
 
     private Map<String, Integer> mergeQuantities(CreateOrderRequest request) {

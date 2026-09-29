@@ -1,22 +1,24 @@
 server:
   address: 127.0.0.1
-  port: 8080
+  port: ${MALLSYSTEM_PORT:9991}
   shutdown: graceful
 
 spring:
   application:
     name: mall-system
   datasource:
-    url: jdbc:mysql://127.0.0.1:3306/mall_system?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=UTF-8&allowPublicKeyRetrieval=true
-    username: ${DB_USERNAME:root}
-    password: ${DB_PASSWORD:root}
+    url: jdbc:sqlite:${MALLSYSTEM_DB_PATH:${user.home}/.mallagent/mallagent.db}?busy_timeout=5000&foreign_keys=on
+    username:
+    password:
+    driver-class-name: org.sqlite.JDBC
     hikari:
-      maximum-pool-size: 10
-      minimum-idle: 2
-      connection-timeout: 3000
+      maximum-pool-size: 1
+      minimum-idle: 1
+      connection-timeout: 10000
       pool-name: MallHikariPool
   jpa:
     open-in-view: false
+    database-platform: org.hibernate.community.dialect.SQLiteDialect
     hibernate:
       ddl-auto: update
     show-sql: false

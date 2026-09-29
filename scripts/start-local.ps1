@@ -27,17 +27,24 @@ if ($javaVersion -notmatch 'version "17(\.|")') {
     throw "当前 Java 不是 17：$javaVersion"
 }
 
-$mysqlService = Get-Service -Name 'MySQL84' -ErrorAction SilentlyContinue
-if ($null -eq $mysqlService) {
-    throw '未找到 MySQL84 服务。'
+$databasePath = if ([string]::IsNullOrWhiteSpace($env:MALLSYSTEM_DB_PATH)) {
+    Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'MallAgent\MallAgent\config.db'
+} else {
+    [Environment]::ExpandEnvironmentVariables($env:MALLSYSTEM_DB_PATH)
 }
-if ($mysqlService.Status -ne 'Running') {
-    Start-Service -Name 'MySQL84'
-    $mysqlService.WaitForStatus('Running', [TimeSpan]::FromSeconds(15))
+$databaseDirectory = Split-Path -Parent $databasePath
+New-Item -ItemType Directory -Path $databaseDirectory -Force | Out-Null
+
+$port = 9991
+if (-not [string]::IsNullOrWhiteSpace($env:MALLSYSTEM_PORT)) {
+    $port = [int]::Parse($env:MALLSYSTEM_PORT)
 }
-if (-not (Test-NetConnection -ComputerName '127.0.0.1' -Port 3306 -InformationLevel Quiet -WarningAction SilentlyContinue)) {
-    throw 'MySQL84 未监听 127.0.0.1:3306。'
+if ($port -lt 1 -or $port -gt 65535) {
+    throw 'MALLSYSTEM_PORT 必须是 1 到 65535 之间的整数。'
 }
+$env:MALLSYSTEM_DB_PATH = $databasePath
+$env:MALLAGENT_CONFIG_PATH = $databasePath
+$env:MALLSYSTEM_PORT = [string]$port
 
 Push-Location $projectRoot
 try {
@@ -64,13 +71,13 @@ try {
         -RedirectStandardError $stderrLog -WindowStyle Hidden -PassThru
     Set-Content -LiteralPath $pidFile -Value $process.Id -Encoding ascii
 
-    $healthUrl = 'http://127.0.0.1:8080/actuator/health'
+    $healthUrl = "http://127.0.0.1:$port/actuator/health"
     $ready = $false
     for ($attempt = 0; $attempt -lt 30; $attempt++) {
         if ($process.HasExited) {
             throw "应用启动失败，请查看 $stderrLog"
         }
-        $listener = Get-NetTCPConnection -LocalPort 8080 -State Listen -ErrorAction SilentlyContinue |
+        $listener = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue |
             Where-Object { $_.OwningProcess -eq $process.Id }
         if ($null -eq $listener) {
             Start-Sleep -Seconds 1

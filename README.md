@@ -1,8 +1,19 @@
 # MallSystem API
 
+MallSystem 是 MallAgent 使用的本地 Java MCP 服务。默认只监听本机 `127.0.0.1:9991`，数据库使用 SQLite；由 MallAgent 启动时把 `MALLSYSTEM_DB_PATH` 指向客户端现有的 `config.db`，因此不需要 MySQL。
+
+首次启动会自动创建表并幂等写入 5 个内置商品：可口可乐、橙味汽水、矿泉水、原味薯片和经典巧克力。
+
 ## REST API
 
-服务地址：`http://127.0.0.1:8080`
+服务地址：`http://127.0.0.1:9991`
+
+可通过环境变量覆盖 SQLite 文件位置和端口：
+
+```powershell
+$env:MALLSYSTEM_DB_PATH = 'C:\path\to\MallAgent\config.db'
+$env:MALLSYSTEM_PORT = '9991'
+```
 
 ## 打包
 
@@ -45,7 +56,7 @@
 
 ## MCP
 
-MCP 地址：`http://127.0.0.1:8080/mcp`
+MCP 地址：`http://127.0.0.1:9991/mcp`
 
 提供以下工具：
 
