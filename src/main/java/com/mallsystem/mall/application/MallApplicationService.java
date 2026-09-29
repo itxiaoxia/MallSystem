@@ -64,12 +64,22 @@ public class MallApplicationService {
         return new InventoryResponse(product.getProductCode(), product.getName(), product.getStock(), product.getStatus());
     }
 
+    @Transactional(readOnly = true)
+    public PageResponse<OrderResponse> listOrders(int page, int size) {
+        if (page < 0 || size < 1 || size > 100) {
+            throw new BusinessException(ErrorCode.INVALID_ARGUMENT);
+        }
+        Sort sort = Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id"));
+        Page<MallOrder> orders = mallOrderRepository.findAll(PageRequest.of(page, size, sort));
+        return new PageResponse<>(orders.getContent().stream().map(this::toOrderResponse).toList(),
+                orders.getNumber(), orders.getSize(), orders.getTotalElements(), orders.getTotalPages());
+    }
+
     @Transactional
     public OrderResponse createOrder(CreateOrderRequest request) {
         if (request == null || request.items() == null || request.items().isEmpty()) {
             throw new BusinessException(ErrorCode.INVALID_ARGUMENT);
         }
-
         Map<String, Integer> quantities = mergeQuantities(request);
         List<ProductSnapshot> snapshots = new ArrayList<>(quantities.size());
         BigDecimal totalAmount = BigDecimal.ZERO;
@@ -94,10 +104,50 @@ public class MallApplicationService {
     }
 
     @Transactional
+    public OrderStatusResponse refundOrder(String orderNo) {
+        String normalizedOrderNo = normalizeRequired(orderNo);
+        MallOrder order = mallOrderRepository.findByOrderNoForUpdate(normalizedOrderNo)
+                .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));
+        if (order.getStatus() == OrderStatus.CANCELLED) {
+            return new OrderStatusResponse(order.getOrderNo(), order.getStatus());
+        }
+        if (order.getStatus() != OrderStatus.CREATED && order.getStatus() != OrderStatus.PAID) {
+            throw new BusinessException(ErrorCode.REFUND_NOT_ALLOWED);
+        }
+
+        restoreOrderStock(order);
+        order.changeStatus(OrderStatus.CANCELLED);
+        mallOrderRepository.saveAndFlush(order);
+        return new OrderStatusResponse(order.getOrderNo(), order.getStatus());
+    }
+
+    @Transactional
+    public OrderStatusResponse deleteOrder(String orderNo) {
+        String normalizedOrderNo = normalizeRequired(orderNo);
+        MallOrder order = mallOrderRepository.findByOrderNoForUpdate(normalizedOrderNo)
+                .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));
+        if (order.getStatus() == OrderStatus.SHIPPED || order.getStatus() == OrderStatus.CLOSED) {
+            throw new BusinessException(ErrorCode.ORDER_DELETE_NOT_ALLOWED);
+        }
+        if (order.getStatus() == OrderStatus.CREATED || order.getStatus() == OrderStatus.PAID) {
+            restoreOrderStock(order);
+            order.changeStatus(OrderStatus.CANCELLED);
+        }
+
+        OrderStatusResponse response = new OrderStatusResponse(order.getOrderNo(), OrderStatus.CANCELLED);
+        mallOrderRepository.delete(order);
+        mallOrderRepository.flush();
+        return response;
+    }
+
+    @Transactional
     public OrderStatusResponse updateOrderStatus(String orderNo, OrderStatus targetStatus) {
         String normalizedOrderNo = normalizeRequired(orderNo);
         if (targetStatus == null) {
             throw new BusinessException(ErrorCode.INVALID_ARGUMENT);
+        }
+        if (targetStatus == OrderStatus.CANCELLED) {
+            return refundOrder(normalizedOrderNo);
         }
         MallOrder order = mallOrderRepository.findByOrderNo(normalizedOrderNo)
                 .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));
@@ -130,6 +180,15 @@ public class MallApplicationService {
             throw new BusinessException(ErrorCode.INVALID_ARGUMENT);
         }
         return value.trim();
+    }
+
+    private void restoreOrderStock(MallOrder order) {
+        for (OrderItem item : order.getItems()) {
+            if (productRepository.incrementStock(item.getProductCode(), item.getQuantity()) != 1) {
+                throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+                        "库存恢复失败：" + item.getProductCode());
+            }
+        }
     }
 
     private String nextOrderNo() {

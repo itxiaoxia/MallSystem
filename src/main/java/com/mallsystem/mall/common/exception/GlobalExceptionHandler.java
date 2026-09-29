@@ -6,6 +6,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -17,7 +18,7 @@ public class GlobalExceptionHandler {
         ErrorCode errorCode = exception.getErrorCode();
         HttpStatus status = switch (errorCode) {
             case PRODUCT_NOT_FOUND, ORDER_NOT_FOUND -> HttpStatus.NOT_FOUND;
-            case INSUFFICIENT_STOCK, INVALID_ORDER_STATUS -> HttpStatus.CONFLICT;
+            case INSUFFICIENT_STOCK, INVALID_ORDER_STATUS, REFUND_NOT_ALLOWED, ORDER_DELETE_NOT_ALLOWED -> HttpStatus.CONFLICT;
             case INVALID_ARGUMENT, WRITE_CONFIRMATION_REQUIRED -> HttpStatus.BAD_REQUEST;
             case INTERNAL_ERROR -> HttpStatus.INTERNAL_SERVER_ERROR;
         };
@@ -40,6 +41,12 @@ public class GlobalExceptionHandler {
                 .map(violation -> violation.getMessage())
                 .orElse(ErrorCode.INVALID_ARGUMENT.message());
         return ResponseEntity.badRequest().body(ApiResponse.failure(ErrorCode.INVALID_ARGUMENT, message));
+    }
+
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<?> handleMissingRequestParameter() {
+        return ResponseEntity.badRequest().body(ApiResponse.failure(
+                ErrorCode.INVALID_ARGUMENT, ErrorCode.INVALID_ARGUMENT.message()));
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)

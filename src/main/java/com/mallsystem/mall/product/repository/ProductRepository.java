@@ -42,4 +42,15 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
                and p.stock >= :quantity
             """)
     int decrementStockIfEnough(@Param("productCode") String productCode, @Param("quantity") int quantity);
+
+    // 退款时原子恢复库存，同时推进版本号，避免覆盖并发更新。
+    @Modifying(flushAutomatically = true)
+    @Query("""
+            update Product p
+               set p.stock = p.stock + :quantity,
+                   p.version = p.version + 1,
+                   p.updatedAt = CURRENT_TIMESTAMP
+             where p.productCode = :productCode
+            """)
+    int incrementStock(@Param("productCode") String productCode, @Param("quantity") int quantity);
 }

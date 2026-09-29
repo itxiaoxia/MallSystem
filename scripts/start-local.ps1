@@ -70,6 +70,12 @@ try {
         if ($process.HasExited) {
             throw "应用启动失败，请查看 $stderrLog"
         }
+        $listener = Get-NetTCPConnection -LocalPort 8080 -State Listen -ErrorAction SilentlyContinue |
+            Where-Object { $_.OwningProcess -eq $process.Id }
+        if ($null -eq $listener) {
+            Start-Sleep -Seconds 1
+            continue
+        }
         try {
             $health = Invoke-WebRequest -Uri $healthUrl -UseBasicParsing -TimeoutSec 2
             if ($health.StatusCode -eq 200) {

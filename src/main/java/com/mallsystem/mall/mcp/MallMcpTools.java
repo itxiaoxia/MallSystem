@@ -38,6 +38,13 @@ public class MallMcpTools {
         return applicationService.getInventory(productCode);
     }
 
+    @McpTool(name = "list_my_orders", description = "分页查询全部订单")
+    public PageResponse<OrderResponse> listMyOrders(
+            @McpToolParam(description = "从0开始的页码", required = true) int page,
+            @McpToolParam(description = "每页数量，范围1到100", required = true) int size) {
+        return applicationService.listOrders(page, size);
+    }
+
     @McpTool(name = "create_order", description = "在明确确认后创建订单并扣减库存")
     public OrderResponse createOrder(
             @McpToolParam(description = "必须明确传入true才允许写入", required = true) boolean confirmed,
@@ -54,6 +61,22 @@ public class MallMcpTools {
             @McpToolParam(description = "必须明确传入true才允许写入", required = true) boolean confirmed) {
         requireWriteConfirmation(confirmed);
         return applicationService.updateOrderStatus(orderNo, status);
+    }
+
+    @McpTool(name = "refund_order", description = "在明确确认后立即退款并恢复库存")
+    public OrderStatusResponse refundOrder(
+            @McpToolParam(description = "订单号", required = true) String orderNo,
+            @McpToolParam(description = "必须明确传入true才允许直接退款", required = true) boolean confirmed) {
+        requireWriteConfirmation(confirmed);
+        return applicationService.refundOrder(orderNo);
+    }
+
+    @McpTool(name = "delete_order", description = "在明确确认后删除订单并恢复必要库存")
+    public OrderStatusResponse deleteOrder(
+            @McpToolParam(description = "订单号", required = true) String orderNo,
+            @McpToolParam(description = "必须明确传入true才允许删除", required = true) boolean confirmed) {
+        requireWriteConfirmation(confirmed);
+        return applicationService.deleteOrder(orderNo);
     }
 
     private void requireWriteConfirmation(boolean confirmed) {
